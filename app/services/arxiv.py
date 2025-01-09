@@ -19,16 +19,11 @@ class ArxivService:
         self.config = config or ArxivConfig()
         self.client = arxiv.Client()
 
-    def fetch_papers(self) -> List[Paper]:
-        """
-        Fetch papers from ArXiv based on configured categories
-        Returns list of Paper objects
-        """
+    async def fetch_papers(self) -> List[Paper]:
         try:
-            # Construct category query
+            logger.info("Starting paper fetch from ArXiv...")
             category_query = " OR ".join(f"cat:{cat}" for cat in self.config.categories)
             
-            # Create search object
             search = arxiv.Search(
                 query=category_query,
                 max_results=self.config.max_results,
@@ -37,8 +32,13 @@ class ArxivService:
             )
 
             papers = []
-            for result in self.client.results(search):
+            logger.info(f"Fetching up to {self.config.max_results} papers...")
+            results = list(self.client.results(search))
+            
+            logger.info(f"Processing {len(results)} papers...")
+            for i, result in enumerate(results):
                 try:
+                    logger.info(f"Processing paper {i+1}/{len(results)}: {result.title[:50]}...")
                     paper = Paper(
                         arxiv_id=result.entry_id.split('/')[-1],
                         title=result.title,
@@ -48,20 +48,21 @@ class ArxivService:
                         published_date=result.published,
                         updated_date=result.updated,
                         pdf_url=result.pdf_url,
-                        summary=self._generate_summary(abstract=result.summary, title=result.title)
+                        summary=await self._generate_summary(result.summary)
                     )
                     papers.append(paper)
                 except Exception as e:
                     logger.error(f"Error processing paper {result.entry_id}: {str(e)}")
                     continue
 
+            logger.info(f"Successfully processed {len(papers)} papers")
             return papers
 
         except Exception as e:
             logger.error(f"Error fetching papers from ArXiv: {str(e)}")
             raise
 
-    def _generate_summary(self, abstract: str, title: str) -> str:
+    async def _generate_summary(self, abstract: str) -> str:
         """
         Generate a concise summary of the abstract
         For POC, we'll just return the abstract

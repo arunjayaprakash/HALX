@@ -3,6 +3,21 @@ from typing import List, Optional
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+
+logging.info("STARTING")
+
 
 from .services import (
     ArxivService, 
@@ -11,7 +26,12 @@ from .services import (
     EmbeddingsService,
     RAGService
 )
+
 from .models.paper import Paper
+
+from .config import settings
+
+logging.info("IMPORTED MODULES")
 
 # Load environment variables
 load_dotenv()
@@ -28,22 +48,54 @@ mongodb_service = MongoDBService(
     connection_url=os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 )
 
+# embeddings_service = EmbeddingsService(
+#     persist_directory=os.getenv("CHROMA_PATH", "./chroma_db")
+# )
+
+# Update to FAISS implementation
 embeddings_service = EmbeddingsService(
-    persist_directory=os.getenv("CHROMA_PATH", "./chroma_db")
+    model_name=os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 )
+
 
 rag_service = RAGService(
     embeddings_service=embeddings_service,
-    model_name=os.getenv("LLM_MODEL", "mistral:7b-q4")
+    model_name=os.getenv("LLM_MODEL", "mistral")
 )
 
 arxiv_service = ArxivService(
     config=ArxivConfig(
         max_results=int(os.getenv("ARXIV_MAX_RESULTS", "50")),
-        categories=os.getenv("CATEGORIES", "cs.AI,cs.LG").split(",")
+        # categories=os.getenv("CATEGORIES", "cs.AI,cs.LG").split(",")
+        categories=settings.categories
     )
 )
-arxiv_service.rag_service = rag_service  # Add RAG service for summary generation
+
+arxiv_service.rag_service = rag_service  # RAG service for summary gen.
+
+# Rate Limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def error_handling_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(e)}
+        )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = datetime.now()
+    response = await call_next(request)
+    duration = datetime.now() - start_time
+    logging.info(f"{request.method} {request.url} took {duration.total_seconds():.2f}s")
+    return response
 
 @app.get("/")
 async def root():
@@ -54,17 +106,25 @@ async def root():
 async def fetch_papers():
     """Fetch new papers from ArXiv"""
     try:
+        logger.info("Starting paper fetch process...")
+        
         # Fetch papers
         papers = await arxiv_service.fetch_papers()
+        logger.info(f"Fetched {len(papers)} papers from ArXiv")
         
-        # Process papers with RAG (generate summaries and embeddings)
+        # Process papers with RAG
+        logger.info("Starting RAG processing...")
         processed_papers = await rag_service.batch_process_papers(papers)
+        logger.info("RAG processing complete")
         
         # Store in MongoDB
-        mongodb_service.store_papers(processed_papers)
+        logger.info("Storing papers in MongoDB...")
+        await mongodb_service.store_papers(processed_papers)
+        logger.info("Storage complete")
         
         return processed_papers
     except Exception as e:
+        logger.error(f"Error in fetch_papers: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/papers/recent", response_model=List[Paper])
@@ -100,6 +160,16 @@ async def query_papers(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/papers/batch")
+async def process_paper_batch(papers: List[Paper]):
+    """Process a batch of papers"""
+    try:
+        processed = await rag_service.batch_process_papers(papers)
+        stored = mongodb_service.store_papers(processed)
+        return {"processed": len(processed), "stored": stored}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/papers/search", response_model=List[Paper])
 async def search_papers(
     query: str = "",
@@ -117,6 +187,15 @@ async def search_papers(
         limit=limit
     )
     return papers
+
+@app.get("/stats")
+async def get_stats():
+    """Get system statistics"""
+    return {
+        "total_papers": mongodb_service.get_total_papers(),
+        "categories": mongodb_service.get_unique_categories(),
+        "latest_update": mongodb_service.get_latest_update_time()
+    }
 
 @app.on_event("startup")
 async def startup_event():

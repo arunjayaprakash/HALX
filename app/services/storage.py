@@ -29,7 +29,34 @@ class MongoDBService:
         # Index for date-based queries
         self.papers.create_index("published_date")
 
-    def store_papers(self, papers: List[Paper]) -> int:
+    # def store_papers(self, papers: List[Paper]) -> int:
+    #     """
+    #     Store multiple papers, handling duplicates
+    #     Returns number of papers successfully stored
+    #     """
+    #     stored_count = 0
+    #     for paper in papers:
+    #         try:
+    #             # Convert to dict and handle datetime
+    #             paper_dict = paper.model_dump()
+                
+    #             # Upsert based on arxiv_id
+    #             result = self.papers.update_one(
+    #                 {"arxiv_id": paper.arxiv_id},
+    #                 {"$set": paper_dict},
+    #                 upsert=True
+    #             )
+                
+    #             if result.upserted_id or result.modified_count:
+    #                 stored_count += 1
+                    
+    #         except Exception as e:
+    #             logger.error(f"Error storing paper {paper.arxiv_id}: {str(e)}")
+    #             continue
+                
+    #     return stored_count
+
+    async def store_papers(self, papers: List[Paper]) -> int:
         """
         Store multiple papers, handling duplicates
         Returns number of papers successfully stored
@@ -37,23 +64,17 @@ class MongoDBService:
         stored_count = 0
         for paper in papers:
             try:
-                # Convert to dict and handle datetime
                 paper_dict = paper.model_dump()
-                
-                # Upsert based on arxiv_id
-                result = self.papers.update_one(
+                result = await self.papers.update_one(
                     {"arxiv_id": paper.arxiv_id},
                     {"$set": paper_dict},
                     upsert=True
                 )
-                
                 if result.upserted_id or result.modified_count:
                     stored_count += 1
-                    
             except Exception as e:
                 logger.error(f"Error storing paper {paper.arxiv_id}: {str(e)}")
                 continue
-                
         return stored_count
 
     def get_paper(self, arxiv_id: str) -> Optional[Paper]:

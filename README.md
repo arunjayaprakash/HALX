@@ -4,11 +4,82 @@ An intelligent research assistant that collects papers from ArXiv, analyzes them
 
 ## Project Overview
 
-This project implements a Retrieval-Augmented Generation (RAG) system that:
-1. Fetches recent research papers from ArXiv API
-2. Stores paper summaries and metadata in MongoDB
-3. Creates and stores embeddings using FAISS (originally planned with Chroma)
-4. Provides a query interface using Mistral-7B
+HALX is a research assistant system that helps users navigate and understand ArXiv papers.
+
+The project implements a Retrieval-Augmented Generation (RAG) system that:
+  1. Fetches recent research papers from ArXiv API
+  2. Stores paper summaries and metadata in MongoDB
+  3. Creates and stores embeddings using FAISS (originally planned with Chroma)
+  4. Provides a query interface using Mistral-7B
+
+### Core Components:
+
+1. Paper Management (`paper.py`):
+- Defines the core Paper model using Pydantic
+- Handles paper metadata including ArXiv ID, title, abstract, summary, authors, and categories
+
+2. ArXiv Integration (`arxiv.py`):
+- Fetches papers from ArXiv based on configured categories
+- Handles paper metadata extraction and initial processing
+- Interfaces with the RAG service for paper summarization
+
+3. Embeddings System (`embeddings.py`):
+- Uses sentence-transformers
+- Implements FAISS for efficient similarity search
+- Maintains paper embeddings and metadata mapping
+- Used for semantic search and finding similar papers
+
+4. RAG Pipeline (`rag.py`):
+- Uses Mistral (via Ollama) as the base LLM for:
+  - Generating paper summaries
+  - Answering user queries about papers
+- Implements two main prompt templates:
+  - Query prompt: For answering research questions using paper context
+  - Summary prompt: For generating concise paper summaries
+
+5. Storage (`storage.py`):
+- MongoDB integration for persistent storage
+- Handles CRUD operations for papers
+- Implements text search and filtering capabilities
+
+### RAG System Flow:
+
+1. Paper Ingestion:
+```
+ArXiv Service -> RAG Service -> Embeddings Service -> MongoDB
+```
+- Papers are fetched from ArXiv
+- Summaries are generated using Mistral
+- Embeddings are created and stored in FAISS
+- Full paper data is stored in MongoDB
+
+2. Query Processing:
+```
+User Query -> Embeddings Search -> RAG Context Building -> Mistral Response
+```
+- User query is processed through embeddings to find relevant papers
+- Relevant papers are formatted into context
+- Mistral generates a response using the context
+
+### Model Usage Breakdown:
+
+1. Mistral (via Ollama):
+- Used in `rag.py` for:
+  - Generating paper summaries
+  - Answering user queries with context
+- Configured through `LLM_MODEL` environment variable
+
+2. Sentence Transformers:
+- Used in `embeddings.py` for:
+  - Creating paper embeddings
+  - Enabling semantic search
+- "all-MiniLM-L6-v2" by default
+- Configured through `EMBEDDING_MODEL` environment variable
+
+3. FAISS:
+- Storing and indexing embeddings
+- Performing efficient similarity search
+- Implements L2 distance-based similarity
 
 ## Tech Stack
 
@@ -76,11 +147,21 @@ research-rag/
 - [x] Basic RAG query implementation with async support
 - [x] Test suite for RAG components
 
-### Phase 3: API and Optimization
-- [ ] FastAPI endpoints for queries
-- [ ] Batch processing
-- [ ] Caching layer
-- [ ] Basic error handling and logging
+### Phase 3: API and Optimization ✓
+- [x] FastAPI endpoints implemented:
+  - `/papers/fetch`: Fetch and process new papers from ArXiv
+  - `/papers/recent`: Get most recent papers from database
+  - `/papers/{arxiv_id}`: Get specific paper by ID
+  - `/papers/query`: Semantic search using RAG
+  - `/papers/batch`: Process paper batches
+  - `/papers/search`: Text-based search with filters
+  - `/stats`: System statistics and monitoring
+- [x] Batch processing support
+- [x] Basic error handling and logging
+  - Request/response logging middleware
+  - Error handling middleware
+  - Rate limiting implementation
+- [?] Caching layer
 
 ### Phase 4: Future Enhancements
 - [ ] Scheduler for periodic updates
@@ -158,33 +239,12 @@ ollama serve
 uvicorn app.main:app --reload
 ```
 
-## Initial POC Scope
-
-For the initial POC, we'll limit the scope to:
-- Fetch papers from 1-2 specific ArXiv categories
-- Store last 50 papers only
-- Basic query interface without advanced features
-- Simple REST API endpoints for:
-  - Fetching latest papers
-  - Querying the RAG system
-  - Basic paper metadata retrieval
-
-## Resource Requirements
-
-Minimum system requirements for POC:
-- 8GB RAM (16GB recommended for full Mistral model)
-- Modern CPU (4+ cores recommended)
-- 20GB free disk space
-- Python 3.10+
-- MongoDB Community Edition
-- Ollama with Mistral model
 
 ## Current Limitations
 
 - Using base Mistral-7B model (can be resource intensive)
 - Limited to ArXiv papers in specified categories
 - Basic error handling in POC
-- No authentication in initial version
 - Local-only deployment
 - FAISS index is in-memory only (no persistence)
 

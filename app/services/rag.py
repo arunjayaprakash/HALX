@@ -20,12 +20,28 @@ class RAGService:
         self.query_prompt = PromptTemplate(
             input_variables=["context", "query"],
             template="""You are a helpful research assistant. Use the following research paper excerpts to answer the question. 
-            If you cannot answer the question based solely on the provided excerpts, say so.
+            If the provided excerpts don't contain relevant information to answer the question, inform the user that while 
+            you don't have recent research papers on this topic in the database, you can still provide a general response 
+            based on your knowledge. Then proceed to answer the question to the best of your ability.
+
 
             Research Paper Excerpts:
             {context}
 
             Question: {query}
+
+            Answer: """
+        )
+
+        self.fallback_prompt = PromptTemplate(
+            input_variables=["query"],
+            template="""You are a helpful research assistant. While I don't have any recent research papers in my database 
+            about this topic, I can provide a general response based on my knowledge.
+
+            Question: {query}
+
+            Please provide a helpful response based on your general knowledge, while noting that this isn't based on the 
+            latest research papers.
 
             Answer: """
         )

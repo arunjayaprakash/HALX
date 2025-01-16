@@ -11,6 +11,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -200,8 +201,51 @@ async def get_stats():
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    # You could add initialization logic here
-    pass
+    try:
+        logger.info("Starting system initialization...")
+        
+        # Get total count first
+        total_papers = mongodb_service.get_paper_count()
+        if total_papers == 0:
+            logger.info("No existing papers found in MongoDB")
+            return
+
+        logger.info(f"Found {total_papers} existing papers in MongoDB")
+        
+        # Process papers in batches
+        batch_size = 100
+        total_batches = (total_papers + batch_size - 1) // batch_size
+        papers_processed = 0
+        
+        pbar = tqdm(total=total_papers, 
+                   desc="Loading papers into embeddings service",
+                   unit="papers")
+        
+        try:
+            for batch_num in range(total_batches):
+                # Get batch of papers
+                batch = mongodb_service.get_papers_batch(
+                    skip=batch_num * batch_size,
+                    limit=batch_size
+                )
+                
+                if not batch:
+                    break
+                
+                # Add to embeddings service
+                embeddings_service.add_papers(batch)
+                
+                # Update progress
+                papers_processed += len(batch)
+                pbar.update(len(batch))
+            
+            logger.info(f"Successfully loaded {papers_processed} papers into embeddings service")
+        
+        finally:
+            pbar.close()
+            
+    except Exception as e:
+        logger.error(f"Error during startup initialization: {str(e)}") # Allow the system to start even if initialization fails
 
 @app.on_event("shutdown")
 async def shutdown_event():

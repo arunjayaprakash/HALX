@@ -65,7 +65,7 @@ class ArxivService:
     async def _generate_summary(self, abstract: str) -> str:
         """
         Generate a concise summary of the abstract
-        For POC, we'll just return the abstract
+        For POC, we just return abstract due to mem constraints
         TODO: Implement actual summarization using Mistral
         """
         return abstract

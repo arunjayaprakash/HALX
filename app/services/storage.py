@@ -90,6 +90,41 @@ class MongoDBService:
             logger.error(f"Error retrieving paper {arxiv_id}: {str(e)}")
             return None
 
+    def get_all_papers(self) -> List[Paper]:
+        """Retrieve all papers from the database"""
+        try:
+            cursor = self.papers.find()
+            papers = []
+            for paper_dict in cursor:
+                paper_dict.pop('_id')  # Remove MongoDB _id
+                papers.append(Paper(**paper_dict))
+            return papers
+        except Exception as e:
+            logger.error(f"Error retrieving all papers: {str(e)}")
+            return []
+
+    
+    def get_paper_count(self) -> int:
+        """Get total number of papers in the database"""
+        try:
+            return self.papers.count_documents({})
+        except Exception as e:
+            logger.error(f"Error getting paper count: {str(e)}")
+            return 0
+
+    def get_papers_batch(self, skip: int = 0, limit: int = 100) -> List[Paper]:
+        """Retrieve a batch of papers from the database with pagination"""
+        try:
+            cursor = self.papers.find().skip(skip).limit(limit)
+            papers = []
+            for paper_dict in cursor:
+                paper_dict.pop('_id')
+                papers.append(Paper(**paper_dict))
+            return papers
+        except Exception as e:
+            logger.error(f"Error retrieving papers batch: {str(e)}")
+            return []
+
     def search_papers(self, 
                      query: str = "", 
                      categories: List[str] = None, 

@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 import faiss
 import numpy as np
+import torch
 from sentence_transformers import SentenceTransformer
 import logging
 from ..models.paper import Paper
@@ -8,19 +9,42 @@ from ..models.paper import Paper
 logger = logging.getLogger(__name__)
 
 class EmbeddingsService:
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        """Initialize the embeddings service"""
+    def __init__(self, 
+                 model_name: str = "all-MiniLM-L6-v2",
+                 use_gpu: bool = True):
+        """Initialize the embeddings service with GPU support"""
+        self.use_gpu = use_gpu and torch.cuda.is_available()
+        
+        # Initialize sentence transformer with GPU if available
+        device = 'cuda' if self.use_gpu else 'cpu'
         self.embedding_model = SentenceTransformer(model_name)
+        self.embedding_model.to(device)
+        
         self.dimension = self.embedding_model.get_sentence_embedding_dimension()
         
-        # Initialize FAISS index
-        self.index = faiss.IndexFlatL2(self.dimension)
+        # Initialize FAISS index with GPU support if available
+        if self.use_gpu:
+            # Create CPU index first
+            self.cpu_index = faiss.IndexFlatL2(self.dimension)
+            
+            # Convert to GPU index
+            self.res = faiss.StandardGpuResources()  # Initialize GPU resources
+            self.index = faiss.index_cpu_to_gpu(self.res, 0, self.cpu_index)
+            logger.info("FAISS index initialized on GPU")
+        else:
+            self.index = faiss.IndexFlatL2(self.dimension)
+            logger.info("FAISS index initialized on CPU")
         
         # Store paper metadata
         self.papers = {}  # arxiv_id -> Paper
         self.id_to_index = {}  # arxiv_id -> index position
         self.index_to_id = {}  # index position -> arxiv_id
         self.current_index = 0
+        
+        if self.use_gpu:
+            logger.info(f"Using GPU (CUDA) for embeddings and similarity search")
+        else:
+            logger.info("Using CPU for embeddings and similarity search")
 
     def _prepare_paper_text(self, paper: Paper) -> str:
         """Prepare paper text for embedding"""

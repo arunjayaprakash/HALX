@@ -205,7 +205,7 @@ pip install -r requirements.txt
 2. Install Ollama and download Mistral
 ```bash
 # Install Ollama from https://ollama.ai/
-ollama pull mistral:7b-q4
+ollama pull mistral
 ```
 
 3. Install MongoDB Community Edition
@@ -218,7 +218,7 @@ cp .env.example .env
 
 # Edit .env with your settings
 MONGODB_URL=mongodb://localhost:27017
-ARXIV_MAX_RESULTS=50
+ARXIV_MAX_RESULTS=10
 CATEGORIES=cs.AI,cs.LG  # Paper Categories
 ```
 
